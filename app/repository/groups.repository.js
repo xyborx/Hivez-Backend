@@ -100,12 +100,17 @@ const delete_group = async (group_id) => {
 	};
 };
 
-const get_group_detail = async (group_id) => {
+const get_group_detail = async (group_id, user_id) => {
 	try {
 		const res = await storage({
 			name: 'get_group_detail',
-			text: 'SELECT group_id, group_name, group_description, is_searchable, group_balance FROM groups WHERE group_id=$1',
-			values: [group_id],
+			text: `SELECT g.group_id, g.group_name, g.group_description, g.is_searchable, g.group_balance, gm.role AS user_role
+					FROM groups AS g
+					INNER JOIN groups_members AS gm ON (g.group_id=gm.group_id)
+					WHERE g.group_id=$1
+					AND gm.user_id=$2
+			`,
+			values: [group_id, user_id],
 		});
 		return Promise.resolve(res.rows[0]);
 	} catch (error) {
@@ -239,24 +244,23 @@ const get_group_report_count = async (group_id, start_date, end_date, type) => {
 	try {
 		const res = await storage({
 			name: 'get_group_report_count',
-			text: `SELECT SUM(trx.amount) AS total FROM (
-						SELECT r.request_id AS id, r.request_description AS description, r.request_amount AS amount, r.request_type AS type, r.request_date AS date,
-							u.full_name AS requester_name, COALESCE(u.user_picture, '') AS requester_picture, 'REQUEST' AS source
-						FROM requests AS r
-						INNER JOIN users u ON (r.requester_user_id=u.user_id)
-						WHERE r.approval_status='APPROVED'
-						AND r.source_id=$1 AND source_type='GROUP'
-						AND r.request_date BETWEEN TO_TIMESTAMP($2,'YYYY-MM-DD') AND TO_TIMESTAMP($3,'YYYY-MM-DD')
+			text: `SELECT COALESCE(SUM(trx.amount), 0) AS total FROM (
+						SELECT request_amount AS amount
+						FROM requests
+						WHERE approval_status='APPROVED'
+						AND source_id=$1
+						AND source_type='GROUP'
+						AND request_type=$4
+						AND request_date BETWEEN TO_TIMESTAMP($2,'YYYY-MM-DD') AND TO_TIMESTAMP($3,'YYYY-MM-DD')
 						UNION
-						SELECT bp.bill_payment_id AS id, b.bill_description AS description, b.bill_amount AS amount, 'INCOME' AS type, bp.payment_date AS date,
-							u.full_name AS requester_name, COALESCE(u.user_picture, '') AS requester_picture, 'BILL' AS source
+						SELECT b.bill_amount AS amount
 						FROM bill_payments AS bp
 						INNER JOIN bills b ON (bp.bill_id=b.bill_id)
-						INNER JOIN users u ON (bp.payer_user_id=u.user_id)
 						WHERE bp.approval_status='APPROVED'
+						AND 'INCOME'=$4
 						AND b.group_id=$1
 						AND bp.payment_date BETWEEN TO_TIMESTAMP($2,'YYYY-MM-DD') AND TO_TIMESTAMP($3,'YYYY-MM-DD')
-					) AS trx WHERE trx.type=$4`,
+					) AS trx`,
 			values: [group_id, start_date, end_date, type],
 		});
 		return Promise.resolve(res.rows[0]['total']);

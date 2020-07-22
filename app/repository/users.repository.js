@@ -212,6 +212,89 @@ const update_login_data = async (user_id, login_token) => {
 	};
 };
 
+const get_user_transaction_list = async (user_id) => {
+	try {
+		const res = await storage({
+			name: 'get_user_transaction_list',
+			text: `(
+						SELECT r.request_id AS id, r.request_description AS description, r.request_amount AS amount, CONCAT(r.source_type, '_REQUEST') AS source_type,
+							r.created_date AS created_date, r.request_type AS type, COALESCE(r.approval_status, '') as approval_status,
+							CASE WHEN (r.source_type='GROUP') THEN (SELECT group_name FROM groups WHERE group_id=r.source_id) 
+							ELSE (SELECT event_name FROM events WHERE event_id=r.source_id) END AS source_name,
+							CASE WHEN (r.source_type='GROUP') THEN (SELECT group_picture FROM groups WHERE group_id=r.source_id) 
+							ELSE (SELECT event_picture FROM events WHERE event_id=r.source_id) END AS source_picture
+						FROM requests AS r
+						INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
+						WHERE r.requester_user_id=$1
+							AND r.approval_status=''
+						UNION
+						SELECT bp.bill_payment_id AS id, b.bill_description AS description, b.bill_amount AS amount, 'GROUP_BILL' AS source_type,
+							bp.payment_date AS created_date, 'INCOME' AS type, COALESCE(bp.approval_status, '') as approval_status,
+							g.group_name AS source_name, g.group_picture AS source_picture
+						FROM bill_payments AS bp
+						INNER JOIN bills AS b ON (bp.bill_id=b.bill_id)
+						INNER JOIN groups AS g ON (b.group_id=g.group_id)
+						WHERE bp.payer_user_id=$1
+							AND bp.approval_status=''
+						ORDER BY created_date DESC
+						LIMIT 5
+					)
+					UNION
+					(
+						SELECT r.request_id AS id, r.request_description AS description, r.request_amount AS amount, CONCAT(r.source_type, '_REQUEST') AS source_type,
+							r.created_date AS created_date, r.request_type AS type, COALESCE(r.approval_status, '') as approval_status,
+							CASE WHEN (r.source_type='GROUP') THEN (SELECT group_name FROM groups WHERE group_id=r.source_id) 
+							ELSE (SELECT event_name FROM events WHERE event_id=r.source_id) END AS source_name,
+							CASE WHEN (r.source_type='GROUP') THEN (SELECT group_picture FROM groups WHERE group_id=r.source_id) 
+							ELSE (SELECT event_picture FROM events WHERE event_id=r.source_id) END AS source_picture
+						FROM requests AS r
+						INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
+						WHERE r.requester_user_id=$1
+							AND r.approval_status='APPROVED'
+						UNION
+						SELECT bp.bill_payment_id AS id, b.bill_description AS description, b.bill_amount AS amount, 'GROUP_BILL' AS source_type,
+							bp.payment_date AS created_date, 'INCOME' AS type, COALESCE(bp.approval_status, '') as approval_status,
+							g.group_name AS source_name, g.group_picture AS source_picture
+						FROM bill_payments AS bp
+						INNER JOIN bills AS b ON (bp.bill_id=b.bill_id)
+						INNER JOIN groups AS g ON (b.group_id=g.group_id)
+						WHERE bp.payer_user_id=$1
+							AND bp.approval_status='APPROVED'
+						ORDER BY created_date DESC
+						LIMIT 5
+					)
+					UNION
+					(
+						SELECT r.request_id AS id, r.request_description AS description, r.request_amount AS amount, CONCAT(r.source_type, '_REQUEST') AS source_type,
+							r.created_date AS created_date, r.request_type AS type, COALESCE(r.approval_status, '') as approval_status,
+							CASE WHEN (r.source_type='GROUP') THEN (SELECT group_name FROM groups WHERE group_id=r.source_id) 
+							ELSE (SELECT event_name FROM events WHERE event_id=r.source_id) END AS source_name,
+							CASE WHEN (r.source_type='GROUP') THEN (SELECT group_picture FROM groups WHERE group_id=r.source_id) 
+							ELSE (SELECT event_picture FROM events WHERE event_id=r.source_id) END AS source_picture
+						FROM requests AS r
+						INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
+						WHERE r.requester_user_id=$1
+							AND r.approval_status='REJECTED'
+						UNION
+						SELECT bp.bill_payment_id AS id, b.bill_description AS description, b.bill_amount AS amount, 'GROUP_BILL' AS source_type,
+							bp.payment_date AS created_date, 'INCOME' AS type, COALESCE(bp.approval_status, '') as approval_status,
+							g.group_name AS source_name, g.group_picture AS source_picture
+						FROM bill_payments AS bp
+						INNER JOIN bills AS b ON (bp.bill_id=b.bill_id)
+						INNER JOIN groups AS g ON (b.group_id=g.group_id)
+						WHERE bp.payer_user_id=$1
+							AND bp.approval_status='REJECTED'
+						ORDER BY created_date DESC
+						LIMIT 5
+					) ORDER BY created_date DESC`,
+			values: [user_id],
+		});
+		return Promise.resolve(res.rows);
+	} catch (error) {
+		throw new Error('Database error: ' + error.stack);
+	};
+};
+
 const get_user_favourites = async (user_id) => {
 	try {
 		const res = await storage({
@@ -220,6 +303,7 @@ const get_user_favourites = async (user_id) => {
 				   FROM groups_members AS gm
 				   INNER JOIN groups AS g ON (gm.group_id=g.group_id)
 				   WHERE gm.user_id=$1
+				   AND gm.is_favourite='Y'
 				   AND gm.is_left='N'
 				   AND g.is_deleted='N'
 				   UNION
@@ -227,6 +311,7 @@ const get_user_favourites = async (user_id) => {
 				   FROM events_members AS em
 				   INNER JOIN events AS e ON em.event_id=e.event_id
 				   WHERE em.user_id=$1
+				   AND em.is_favourite='Y'
 				   AND em.is_left='N'
 				   AND e.is_deleted='N'`,
 			values: [user_id],
@@ -285,6 +370,19 @@ const get_user_event = async (user_id) => {
 	};
 };
 
+const login_user = async (email, password) => {
+	try {
+		const res = await storage({
+			name: 'login_user',
+			text: `SELECT user_id FROM users WHERE email=$1 AND password=$2 AND is_reset_password='N' AND is_deleted='N'`,
+			values: [email, password],
+		});
+		return Promise.resolve(res);
+	} catch (error) {
+		throw new Error('Database error: ' + error.stack);
+	};
+};
+
 module.exports = {
 	find_user_name,
 	count_user,
@@ -302,7 +400,9 @@ module.exports = {
 	get_user_picture,
 	update_user_picture,
 	update_login_data,
+	get_user_transaction_list,
 	get_user_favourites,
 	get_user_group,
-	get_user_event
+	get_user_event,
+	login_user
 };

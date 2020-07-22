@@ -1,4 +1,6 @@
 var express = require('express');
+var jwt = require('jsonwebtoken');
+
 var router = express.Router();
 
 const user_repository = require('../repository/users.repository');
@@ -28,6 +30,25 @@ router.get('/', async (req, res) => {
 	};
 });
 
+// Find user name
+router.get('/email/:email', async (req, res) => {
+	try {
+		if (!req.params['email']) {
+			res.json(response.failed('HIVEZ-001-0001', 'Invalid input', 'Input salah'));
+			return;
+		};
+		const duplicate_email_count = await user_repository.count_email(req.params['email']);
+		if (duplicate_email_count > 0) {
+			res.json(response.failed('HIVEZ-001-0002', 'Email already used by another account', 'Email sudah digunakan oleh akun lain'));
+			return;
+		};
+		res.json(response.success({'response': 'success'}));
+	} catch (error) {
+		console.log(error.stack);
+		res.json(response.error_global);
+	};
+});
+
 // Create user (Sign up)
 router.post('/', async (req, res) => {
 	try {
@@ -35,23 +56,20 @@ router.post('/', async (req, res) => {
 		const body = req.body;
 		const duplicate_user_name_count = await user_repository.count_user_name(body['user_name']);
 		if (duplicate_user_name_count > 0) {
-			res.json(response.failed('HIVEZ-001-0002', 'Username already used', 'Username sudah digunakan'));
-			return;
-		};
-		const duplicate_email_count = await user_repository.count_email(body['email']);
-		if (duplicate_email_count > 0) {
-			res.json(response.failed('HIVEZ-001-0003', 'Email already used', 'Email sudah digunakan'));
+			res.json(response.failed('HIVEZ-001-0003', 'Username already used by another account', 'Username sudah digunakan oleh akun lain'));
 			return;
 		};
 		const user_id = await user_repository.create_user(body['user_name'], body['full_name'], body['email'], body['password']);
-		const login_token = 'dummy token';
-		await user_repository.create_login_data(user_id, login_token);
 		const login_id = await user_repository.create_audit_user_login(user_id, body['ip_address'], 'Sign Up');
+		const json_payload = JSON.stringify({
+			'generated_date': new Date(),
+			'user_id': user_id,
+			'login_id': login_id
+		});
+		const login_token = jwt.sign(json_payload, 'hivez_application');
+		await user_repository.create_login_data(user_id, login_token);
 		res.json(response.success({
 			'user_id': user_id,
-			'user_name': body['user_name'],
-			'full_name': body['full_name'],
-			'email': body['email'],
 			'login_token': login_token,
 			'login_id': login_id
 		}));
@@ -221,17 +239,24 @@ router.post('/login-token', async (req, res) => {
 	try {
 		// TODO: Cek body
 		const body = req.body;
-		const user_count = await user_repository.count_user(body['user_id']);
-		if (user_count < 1) {
-			res.json(response.failed('HIVEZ-001-0004', 'User does not exists', 'Pengguna tidak ditemukan'));
+		const user = await user_repository.login_user(body['email'], body['password']);
+		if (user.rowCount < 1) {
+			res.json(response.failed('HIVEZ-001-0005', 'Wrong username or password', 'Username atau kata sandi salah'));
 			return;
 		};
-		const login_token = 'dummy token';
-		await user_repository.update_login_data(body['user_id'], login_token);
-		const login_id = await user_repository.create_audit_user_login(body['user_id'], body['ip_address'], 'Sign In');
+		const user_id = user.rows[0]['user_id'];
+		const login_id = await user_repository.create_audit_user_login(user_id, body['ip_address'], 'Sign In');
+		const json_payload = JSON.stringify({
+			'generated_date': new Date(),
+			'user_id': user_id,
+			'login_id': login_id
+		});
+		const login_token = jwt.sign(json_payload, 'hivez_application');
+		await user_repository.update_login_data(user_id, login_token);
 		res.json(response.success({
 			'login_token': login_token,
-			'login_id': login_id
+			'login_id': login_id,
+			'user_id': user_id
 		}));
 	} catch (error) {
 		console.log(error.stack);
@@ -255,8 +280,13 @@ router.get('/:user_id/new-login-token', async (req, res) => {
 			res.json(response.failed('HIVEZ-001-0001', 'Invalid input', 'Input salah'));
 			return;
 		};
-		const login_token = 'dummy token';
 		const login_id = await user_repository.create_audit_user_login(req.params['user_id'], req.query['ip_address'], 'Extend session');
+		const json_payload = JSON.stringify({
+			'generated_date': new Date(),
+			'user_id': body['user_id'],
+			'login_id': login_id
+		});
+		const login_token = jwt.sign(json_payload, 'hivez_application');
 		await user_repository.update_login_data(req.params['user_id'], login_token);
 		res.json(response.success({
 			'login_token': login_token,
@@ -271,6 +301,27 @@ router.get('/:user_id/new-login-token', async (req, res) => {
 // Delete login token (Sign out)
 router.delete('/:user_id/login-token', async (req, res) => {
 	try {
+		if (!req.params['user_id'] || !req.query['ip-address']) {
+			res.json(response.failed('HIVEZ-001-0001', 'Invalid input', 'Input salah'));
+			return;
+		};
+		const user_count = await user_repository.count_user(req.params['user_id']);
+		if (user_count < 1) {
+			res.json(response.failed('HIVEZ-001-0004', 'User does not exists', 'Pengguna tidak ditemukan'));
+			return;
+		};
+		await user_repository.create_audit_user_login(req.params['user_id'], req.query['ip-address'], 'Sign Out');
+		await user_repository.update_login_data(req.params['user_id'], null);
+		res.json(response.success({'status': 'Success'}));
+	} catch (error) {
+		console.log(error.stack);
+		res.json(response.error_global);
+	};
+});
+
+// Get user transaction list
+router.get('/:user_id/transactions', async (req, res) => {
+	try {
 		if (!req.params['user_id']) {
 			res.json(response.failed('HIVEZ-001-0001', 'Invalid input', 'Input salah'));
 			return;
@@ -280,18 +331,12 @@ router.delete('/:user_id/login-token', async (req, res) => {
 			res.json(response.failed('HIVEZ-001-0004', 'User does not exists', 'Pengguna tidak ditemukan'));
 			return;
 		};
-		if (!req.query['ip-address']) {
-			res.json(response.failed('HIVEZ-001-0001', 'Invalid input', 'Input salah'));
-			return;
-		};
-		await user_repository.create_audit_user_login(req.params['user_id'], req.query['ip_address'], 'Sign Out');
-		await user_repository.update_login_data(req.params['user_id'], null);
-		res.json(response.success({'status': 'Success'}));
+		const transaction_list = await user_repository.get_user_transaction_list(req.params['user_id']);
+		res.json(response.success(transaction_list));
 	} catch (error) {
 		console.log(error.stack);
 		res.json(response.error_global);
 	};
-	res.send('Delete login token');
 });
 
 // Get favourite list

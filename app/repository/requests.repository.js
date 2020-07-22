@@ -95,13 +95,35 @@ const get_request_list = async (source_id) => {
 	try {
 		const res = await storage({
 			name: 'get_request_list',
-			text: `SELECT r.request_id, r.request_description, r.request_amount, r.created_date, r.request_date, r.request_type,
+			text: `(SELECT r.request_id, r.request_description, r.request_amount, r.created_date, r.request_date, r.request_type,
 				   COALESCE(r.approval_status, '') as approval_status, u.full_name AS requester_name,
 				   COALESCE((SELECT users.full_name FROM users WHERE r.approver_user_id=users.user_id), '') AS approver_name, COALESCE(u.user_picture, '') AS requester_picture
 				   FROM requests AS r
 				   INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
 				   WHERE r.source_id=$1
-				   ORDER BY r.created_date DESC`,
+				   AND r.approval_status=''
+				   ORDER BY r.created_date DESC
+				   LIMIT 5)
+				   UNION
+				   (SELECT r.request_id, r.request_description, r.request_amount, r.created_date, r.request_date, r.request_type,
+				   COALESCE(r.approval_status, '') as approval_status, u.full_name AS requester_name,
+				   COALESCE((SELECT users.full_name FROM users WHERE r.approver_user_id=users.user_id), '') AS approver_name, COALESCE(u.user_picture, '') AS requester_picture
+				   FROM requests AS r
+				   INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
+				   WHERE r.source_id=$1
+				   AND r.approval_status='APPROVED'
+				   ORDER BY r.created_date DESC
+				   LIMIT 5)
+				   UNION
+				   (SELECT r.request_id, r.request_description, r.request_amount, r.created_date, r.request_date, r.request_type,
+				   COALESCE(r.approval_status, '') as approval_status, u.full_name AS requester_name,
+				   COALESCE((SELECT users.full_name FROM users WHERE r.approver_user_id=users.user_id), '') AS approver_name, COALESCE(u.user_picture, '') AS requester_picture
+				   FROM requests AS r
+				   INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
+				   WHERE r.source_id=$1
+				   AND r.approval_status='REJECTED'
+				   ORDER BY r.created_date DESC
+				   LIMIT 5)`,
 			values: [source_id],
 		});
 		return Promise.resolve(res.rows);

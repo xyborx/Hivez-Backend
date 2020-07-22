@@ -3,8 +3,9 @@ var router = express.Router();
 
 const event_repository = require('../repository/events.repository');
 const group_repository = require('../repository/groups.repository');
-const request_repository = require('../repository/requests.repository');
 const notification_repository = require('../repository/notifications.repository');
+const request_repository = require('../repository/requests.repository');
+const user_repository = require('../repository/users.repository');
 const response = require('../utils/response.utils');
 
 // Create request
@@ -85,7 +86,7 @@ router.put('/:request_id/approval', async (req, res) => {
 router.get('/:source_id/lists', async (req, res) => {
 	try {
 		if (!req.params['source_id']) {
-			res.json(response.failed('HIVEZ-001-0001', 'Invalid input', 'Input salah'));
+			res.json(response.failed('HIVEZ-002-0001', 'Invalid input', 'Input salah'));
 			return;
 		};
 		const request_list = await request_repository.get_request_list(req.params['source_id']);

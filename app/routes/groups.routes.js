@@ -80,7 +80,7 @@ router.delete('/:group_id', async (req, res) => {
 // Get group detail
 router.get('/:group_id/detail', async (req, res) => {
 	try {
-		if (!req.params['group_id']) {
+		if (!req.params['group_id'] || !req.query['user-id']) {
 			res.json(response.failed('HIVEZ-004-0001', 'Invalid input', 'Input salah'));
 			return;
 		};
@@ -89,7 +89,7 @@ router.get('/:group_id/detail', async (req, res) => {
 			res.json(response.failed('HIVEZ-004-0002', 'Group does not exists', 'Grup tidak ditemukan'));
 			return;
 		};
-		const group_detail = await group_repository.get_group_detail(req.params['group_id']);
+		const group_detail = await group_repository.get_group_detail(req.params['group_id'], req.query['user-id']);
 		res.json(response.success(group_detail));
 	} catch (error) {
 		console.log(error.stack);
@@ -233,12 +233,10 @@ router.get('/:group_id/report', async (req, res) => {
 							  Number(await group_repository.get_group_report_count(req.params['group_id'], req.query['start-date'], new Date().toISOString().split('T')[0], 'EXPENSE'));
 		res.json(response.success({
 			'transaction_list': transaction_list,
-			'report_detail': {
-				'inflow': income,
-				'outflow': expense,
-				'opening_balance': start_balance,
-				'ending_balance': start_balance + income + expense
-			}
+			'inflow': income,
+			'outflow': expense,
+			'opening_balance': start_balance,
+			'ending_balance': start_balance + income + expense
 		}));
 	} catch (error) {
 		console.log(error.stack);
