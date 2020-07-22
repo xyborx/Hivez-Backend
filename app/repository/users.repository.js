@@ -216,77 +216,79 @@ const get_user_transaction_list = async (user_id) => {
 	try {
 		const res = await storage({
 			name: 'get_user_transaction_list',
-			text: `(
-						SELECT r.request_id AS id, r.request_description AS description, r.request_amount AS amount, CONCAT(r.source_type, '_REQUEST') AS source_type,
-							r.created_date AS created_date, r.request_type AS type, COALESCE(r.approval_status, '') as approval_status,
-							CASE WHEN (r.source_type='GROUP') THEN (SELECT group_name FROM groups WHERE group_id=r.source_id) 
-							ELSE (SELECT event_name FROM events WHERE event_id=r.source_id) END AS source_name,
-							CASE WHEN (r.source_type='GROUP') THEN (SELECT group_picture FROM groups WHERE group_id=r.source_id) 
-							ELSE (SELECT event_picture FROM events WHERE event_id=r.source_id) END AS source_picture
-						FROM requests AS r
-						INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
-						WHERE r.requester_user_id=$1
-							AND r.approval_status=''
+			text: `SELECT * FROM (
+						SELECT * FROM (
+							SELECT r.request_id AS id, r.request_description AS description, r.request_amount AS amount, CONCAT(r.source_type, '_REQUEST') AS source_type,
+								r.created_date AS created_date, r.request_type AS type, COALESCE(r.approval_status, '') as approval_status,
+								CASE WHEN (r.source_type='GROUP') THEN (SELECT group_name FROM groups WHERE group_id=r.source_id) 
+								ELSE (SELECT event_name FROM events WHERE event_id=r.source_id) END AS source_name,
+								CASE WHEN (r.source_type='GROUP') THEN (SELECT group_picture FROM groups WHERE group_id=r.source_id) 
+								ELSE (SELECT event_picture FROM events WHERE event_id=r.source_id) END AS source_picture
+							FROM requests AS r
+							INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
+							WHERE r.requester_user_id=$1
+								AND r.approval_status IS NULL
+							UNION
+							SELECT bp.bill_payment_id AS id, b.bill_description AS description, b.bill_amount AS amount, 'GROUP_BILL' AS source_type,
+								bp.payment_date AS created_date, 'INCOME' AS type, COALESCE(bp.approval_status, '') as approval_status,
+								g.group_name AS source_name, g.group_picture AS source_picture
+							FROM bill_payments AS bp
+							INNER JOIN bills AS b ON (bp.bill_id=b.bill_id)
+							INNER JOIN groups AS g ON (b.group_id=g.group_id)
+							WHERE bp.payer_user_id=$1
+								AND bp.approval_status IS NULL
+							ORDER BY created_date DESC
+							LIMIT 5
+						) AS on_progress
 						UNION
-						SELECT bp.bill_payment_id AS id, b.bill_description AS description, b.bill_amount AS amount, 'GROUP_BILL' AS source_type,
-							bp.payment_date AS created_date, 'INCOME' AS type, COALESCE(bp.approval_status, '') as approval_status,
-							g.group_name AS source_name, g.group_picture AS source_picture
-						FROM bill_payments AS bp
-						INNER JOIN bills AS b ON (bp.bill_id=b.bill_id)
-						INNER JOIN groups AS g ON (b.group_id=g.group_id)
-						WHERE bp.payer_user_id=$1
-							AND bp.approval_status=''
-						ORDER BY created_date DESC
-						LIMIT 5
-					)
-					UNION
-					(
-						SELECT r.request_id AS id, r.request_description AS description, r.request_amount AS amount, CONCAT(r.source_type, '_REQUEST') AS source_type,
-							r.created_date AS created_date, r.request_type AS type, COALESCE(r.approval_status, '') as approval_status,
-							CASE WHEN (r.source_type='GROUP') THEN (SELECT group_name FROM groups WHERE group_id=r.source_id) 
-							ELSE (SELECT event_name FROM events WHERE event_id=r.source_id) END AS source_name,
-							CASE WHEN (r.source_type='GROUP') THEN (SELECT group_picture FROM groups WHERE group_id=r.source_id) 
-							ELSE (SELECT event_picture FROM events WHERE event_id=r.source_id) END AS source_picture
-						FROM requests AS r
-						INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
-						WHERE r.requester_user_id=$1
-							AND r.approval_status='APPROVED'
+						SELECT * FROM (
+							SELECT r.request_id AS id, r.request_description AS description, r.request_amount AS amount, CONCAT(r.source_type, '_REQUEST') AS source_type,
+								r.created_date AS created_date, r.request_type AS type, COALESCE(r.approval_status, '') as approval_status,
+								CASE WHEN (r.source_type='GROUP') THEN (SELECT group_name FROM groups WHERE group_id=r.source_id) 
+								ELSE (SELECT event_name FROM events WHERE event_id=r.source_id) END AS source_name,
+								CASE WHEN (r.source_type='GROUP') THEN (SELECT group_picture FROM groups WHERE group_id=r.source_id) 
+								ELSE (SELECT event_picture FROM events WHERE event_id=r.source_id) END AS source_picture
+							FROM requests AS r
+							INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
+							WHERE r.requester_user_id=$1
+								AND r.approval_status='APPROVED'
+							UNION
+							SELECT bp.bill_payment_id AS id, b.bill_description AS description, b.bill_amount AS amount, 'GROUP_BILL' AS source_type,
+								bp.payment_date AS created_date, 'INCOME' AS type, COALESCE(bp.approval_status, '') as approval_status,
+								g.group_name AS source_name, g.group_picture AS source_picture
+							FROM bill_payments AS bp
+							INNER JOIN bills AS b ON (bp.bill_id=b.bill_id)
+							INNER JOIN groups AS g ON (b.group_id=g.group_id)
+							WHERE bp.payer_user_id=$1
+								AND bp.approval_status='APPROVED'
+							ORDER BY created_date DESC
+							LIMIT 5
+						) AS approved
 						UNION
-						SELECT bp.bill_payment_id AS id, b.bill_description AS description, b.bill_amount AS amount, 'GROUP_BILL' AS source_type,
-							bp.payment_date AS created_date, 'INCOME' AS type, COALESCE(bp.approval_status, '') as approval_status,
-							g.group_name AS source_name, g.group_picture AS source_picture
-						FROM bill_payments AS bp
-						INNER JOIN bills AS b ON (bp.bill_id=b.bill_id)
-						INNER JOIN groups AS g ON (b.group_id=g.group_id)
-						WHERE bp.payer_user_id=$1
-							AND bp.approval_status='APPROVED'
-						ORDER BY created_date DESC
-						LIMIT 5
-					)
-					UNION
-					(
-						SELECT r.request_id AS id, r.request_description AS description, r.request_amount AS amount, CONCAT(r.source_type, '_REQUEST') AS source_type,
-							r.created_date AS created_date, r.request_type AS type, COALESCE(r.approval_status, '') as approval_status,
-							CASE WHEN (r.source_type='GROUP') THEN (SELECT group_name FROM groups WHERE group_id=r.source_id) 
-							ELSE (SELECT event_name FROM events WHERE event_id=r.source_id) END AS source_name,
-							CASE WHEN (r.source_type='GROUP') THEN (SELECT group_picture FROM groups WHERE group_id=r.source_id) 
-							ELSE (SELECT event_picture FROM events WHERE event_id=r.source_id) END AS source_picture
-						FROM requests AS r
-						INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
-						WHERE r.requester_user_id=$1
-							AND r.approval_status='REJECTED'
-						UNION
-						SELECT bp.bill_payment_id AS id, b.bill_description AS description, b.bill_amount AS amount, 'GROUP_BILL' AS source_type,
-							bp.payment_date AS created_date, 'INCOME' AS type, COALESCE(bp.approval_status, '') as approval_status,
-							g.group_name AS source_name, g.group_picture AS source_picture
-						FROM bill_payments AS bp
-						INNER JOIN bills AS b ON (bp.bill_id=b.bill_id)
-						INNER JOIN groups AS g ON (b.group_id=g.group_id)
-						WHERE bp.payer_user_id=$1
-							AND bp.approval_status='REJECTED'
-						ORDER BY created_date DESC
-						LIMIT 5
-					) ORDER BY created_date DESC`,
+						SELECT * FROM (
+							SELECT r.request_id AS id, r.request_description AS description, r.request_amount AS amount, CONCAT(r.source_type, '_REQUEST') AS source_type,
+								r.created_date AS created_date, r.request_type AS type, COALESCE(r.approval_status, '') as approval_status,
+								CASE WHEN (r.source_type='GROUP') THEN (SELECT group_name FROM groups WHERE group_id=r.source_id) 
+								ELSE (SELECT event_name FROM events WHERE event_id=r.source_id) END AS source_name,
+								CASE WHEN (r.source_type='GROUP') THEN (SELECT group_picture FROM groups WHERE group_id=r.source_id) 
+								ELSE (SELECT event_picture FROM events WHERE event_id=r.source_id) END AS source_picture
+							FROM requests AS r
+							INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
+							WHERE r.requester_user_id=$1
+								AND r.approval_status='REJECTED'
+							UNION
+							SELECT bp.bill_payment_id AS id, b.bill_description AS description, b.bill_amount AS amount, 'GROUP_BILL' AS source_type,
+								bp.payment_date AS created_date, 'INCOME' AS type, COALESCE(bp.approval_status, '') as approval_status,
+								g.group_name AS source_name, g.group_picture AS source_picture
+							FROM bill_payments AS bp
+							INNER JOIN bills AS b ON (bp.bill_id=b.bill_id)
+							INNER JOIN groups AS g ON (b.group_id=g.group_id)
+							WHERE bp.payer_user_id=$1
+								AND bp.approval_status='REJECTED'
+							ORDER BY created_date DESC
+							LIMIT 5
+						) AS rejected
+					) AS trx ORDER BY created_date DESC`,
 			values: [user_id],
 		});
 		return Promise.resolve(res.rows);

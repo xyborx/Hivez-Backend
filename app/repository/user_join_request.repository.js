@@ -73,10 +73,27 @@ const get_group_inviteale_user = async (group_id) => {
 	};
 };
 
+const get_event_inviteale_user = async (event_id) => {
+	try {
+		const res = await storage({
+			name: 'get_event_inviteale_user',
+			text: `SELECT u.user_id, u.user_name, u.full_name, COALESCE(u.user_picture, '') AS user_picture
+				   FROM users AS u
+				   LEFT JOIN events_members AS em ON (u.user_id=em.user_id AND em.event_id=$1 AND em.is_left='N')
+				   WHERE em.user_id IS NULL`,
+			values: [event_id],
+		});
+		return Promise.resolve(res.rows);
+	} catch (error) {
+		throw new Error('Database error: ' + error.stack);
+	};
+};
+
 module.exports = {
 	count_join_request,
 	create_join_request,
 	get_join_request_list,
 	get_group_inviteale_user,
+	get_event_inviteale_user,
 	update_join_approval
 };

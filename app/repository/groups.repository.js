@@ -108,8 +108,7 @@ const get_group_detail = async (group_id, user_id) => {
 					FROM groups AS g
 					INNER JOIN groups_members AS gm ON (g.group_id=gm.group_id)
 					WHERE g.group_id=$1
-					AND gm.user_id=$2
-			`,
+					AND gm.user_id=$2`,
 			values: [group_id, user_id],
 		});
 		return Promise.resolve(res.rows[0]);

@@ -80,7 +80,7 @@ router.delete('/:event_id', async (req, res) => {
 // Get event detail
 router.get('/:event_id/detail', async (req, res) => {
 	try {
-		if (!req.params['event_id']) {
+		if (!req.params['event_id'] || !req.query['user-id']) {
 			res.json(response.failed('HIVEZ-005-0001', 'Invalid input', 'Input salah'));
 			return;
 		};
@@ -89,7 +89,7 @@ router.get('/:event_id/detail', async (req, res) => {
 			res.json(response.failed('HIVEZ-005-0002', 'Event does not exists', 'Event tidak ditemukan'));
 			return;
 		};
-		const event_detail = await event_repository.get_event_detail(req.params['event_id']);
+		const event_detail = await event_repository.get_event_detail(req.params['event_id'], req.query['user-id']);
 		res.json(response.success(event_detail));
 	} catch (error) {
 		console.log(error.stack);
@@ -353,6 +353,26 @@ router.put('/join-request/:join_request_id/approval', async (req, res) => {
 		};
 		notification_repository.create_notification(join_data['requester_user_id'], join_data['invited_source_id'], 'EVENT', 'JOIN_' + body['approval_status']);
 		res.json(response.success({'status': 'Success'}));
+	} catch (error) {
+		console.log(error.stack);
+		res.json(response.error_global);
+	};
+});
+
+// Get join group request list
+router.get('/:event_id/users/inviteable', async (req, res) => {
+	try {
+		if (!req.params['event_id']) {
+			res.json(response.failed('HIVEZ-005-0001', 'Invalid input', 'Input salah'));
+			return;
+		};
+		const event_count = await event_repository.count_event(req.params['event_id']);
+		if (event_count < 1) {
+			res.json(response.failed('HIVEZ-005-0002', 'Event does not exists', 'Event tidak ditemukan'));
+			return;
+		};
+		const user_list = await user_join_request_repository.get_event_inviteale_user(req.params['event_id']);
+		res.json(response.success(user_list));
 	} catch (error) {
 		console.log(error.stack);
 		res.json(response.error_global);

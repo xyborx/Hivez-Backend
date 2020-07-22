@@ -63,12 +63,12 @@ const get_request_payees = async (request_id) => {
 	try {
 		const res = await storage({
 			name: 'get_request_payees',
-			text: `SELECT u.full_name, u.user_name, u.profile_picture, em.role, rp.amount
+			text: `SELECT u.user_id, u.full_name, u.user_name, u.user_picture, em.role, rp.amount
 				   FROM requests_payees AS rp
 				   INNER JOIN users AS u ON (rp.payee_user_id=u.user_id)
 				   INNER JOIN requests AS r ON (rp.request_id=r.request_id)
-				   INNER JOIN event_member AS em ON (em.user_id=u.user_id AND em.event_id=r.source_id)
-				   WHERE rp.request_id=$1;`,
+				   INNER JOIN events_members AS em ON (em.user_id=u.user_id AND em.event_id=r.source_id)
+				   WHERE rp.request_id=$1`,
 			values: [request_id],
 		});
 		return Promise.resolve(res.rows);
@@ -95,17 +95,18 @@ const get_request_list = async (source_id) => {
 	try {
 		const res = await storage({
 			name: 'get_request_list',
-			text: `(SELECT r.request_id, r.request_description, r.request_amount, r.created_date, r.request_date, r.request_type,
+			text: `SELECT * FROM
+				   (SELECT * FROM (SELECT r.request_id, r.request_description, r.request_amount, r.created_date, r.request_date, r.request_type,
 				   COALESCE(r.approval_status, '') as approval_status, u.full_name AS requester_name,
 				   COALESCE((SELECT users.full_name FROM users WHERE r.approver_user_id=users.user_id), '') AS approver_name, COALESCE(u.user_picture, '') AS requester_picture
 				   FROM requests AS r
 				   INNER JOIN users AS u ON (r.requester_user_id=u.user_id)
 				   WHERE r.source_id=$1
-				   AND r.approval_status=''
+				   AND r.approval_status IS NULL
 				   ORDER BY r.created_date DESC
-				   LIMIT 5)
+				   LIMIT 5) AS on_progress
 				   UNION
-				   (SELECT r.request_id, r.request_description, r.request_amount, r.created_date, r.request_date, r.request_type,
+				   SELECT * FROM (SELECT r.request_id, r.request_description, r.request_amount, r.created_date, r.request_date, r.request_type,
 				   COALESCE(r.approval_status, '') as approval_status, u.full_name AS requester_name,
 				   COALESCE((SELECT users.full_name FROM users WHERE r.approver_user_id=users.user_id), '') AS approver_name, COALESCE(u.user_picture, '') AS requester_picture
 				   FROM requests AS r
@@ -113,9 +114,9 @@ const get_request_list = async (source_id) => {
 				   WHERE r.source_id=$1
 				   AND r.approval_status='APPROVED'
 				   ORDER BY r.created_date DESC
-				   LIMIT 5)
+				   LIMIT 5) AS approved
 				   UNION
-				   (SELECT r.request_id, r.request_description, r.request_amount, r.created_date, r.request_date, r.request_type,
+				   SELECT * FROM (SELECT r.request_id, r.request_description, r.request_amount, r.created_date, r.request_date, r.request_type,
 				   COALESCE(r.approval_status, '') as approval_status, u.full_name AS requester_name,
 				   COALESCE((SELECT users.full_name FROM users WHERE r.approver_user_id=users.user_id), '') AS approver_name, COALESCE(u.user_picture, '') AS requester_picture
 				   FROM requests AS r
@@ -123,7 +124,7 @@ const get_request_list = async (source_id) => {
 				   WHERE r.source_id=$1
 				   AND r.approval_status='REJECTED'
 				   ORDER BY r.created_date DESC
-				   LIMIT 5)`,
+				   LIMIT 5) AS rejected) AS req ORDER BY created_date DESC`,
 			values: [source_id],
 		});
 		return Promise.resolve(res.rows);

@@ -100,12 +100,16 @@ const delete_event = async (event_id) => {
 	};
 };
 
-const get_event_detail = async (event_id) => {
+const get_event_detail = async (event_id, user_id) => {
 	try {
 		const res = await storage({
 			name: 'get_event_detail',
-			text: 'SELECT event_id, event_name, event_description, is_searchable, total_expense FROM events WHERE event_id=$1',
-			values: [event_id],
+			text: `SELECT e.event_id, e.event_name, e.event_description, e.is_searchable, e.total_expense, em.role AS user_role
+					FROM events AS e
+					INNER JOIN events_members AS em ON (e.event_id=em.event_id)
+					WHERE e.event_id=$1
+					AND em.user_id=$2`,
+			values: [event_id, user_id],
 		});
 		return Promise.resolve(res.rows[0]);
 	} catch (error) {
@@ -169,7 +173,7 @@ const get_event_members = async (event_id) => {
 	try {
 		const res = await storage({
 			name: 'get_event_members',
-			text: `SELECT u.user_id, u.user_name, em.role, u.full_name, em.join_date, u.user_picture
+			text: `SELECT u.user_id, u.user_name, em.role, u.full_name, em.join_date, COALESCE(u.user_picture, '') AS user_picture
 				   FROM events_members AS em
 				   INNER JOIN users AS u ON (u.user_id=em.user_id)
 				   WHERE is_left='N' AND event_id=$1;`,
